@@ -4,6 +4,7 @@ from typing import Union, Literal
 import asyncio
 from aioconsole import ainput, aprint
 import parse
+from pydantic import BaseModel, PositiveInt, constr
 
 class MetaCommandResult(Enum):
     META_COMMAND_SUCCESS = 0
@@ -29,6 +30,11 @@ class Row:
     id = None
     username = None
     email = None
+
+class RowV1(BaseModel):
+    id: PositiveInt
+    username: constr(min_length=1, max_length=32)
+    email: constr(min_length=1,max_length=255)
 
 class Statement:
     statement_type = StatementType.STATEMENT_INSERT  # default to insert
