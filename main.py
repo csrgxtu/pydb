@@ -117,8 +117,7 @@ class PyDB:
             Literal: _description_
         """
         self.table.num_rows += 1
-        page_num = self.table.num_rows // ROWS_PER_PAGE
-        self.table.pager.pages[page_num].rows.append(statement.row)
+        self.table.rows.append(statement.row)
         return ExecuteResult.EXECUTE_SUCCESS
     
     async def execute_select(self, statement) -> Literal:
@@ -130,33 +129,13 @@ class PyDB:
         Returns:
             Literal: _description_
         """
-        for page in self.table.pager.pages:
-            for row in page.rows:
-                await aprint(f'({row.id}, {row.username}, {row.email})')
+        for row_idx in range(self.table.num_rows):
+            if self.table.rows[row_idx]:
+                row = self.table.rows[row_idx]
+            else:
+                row = await self.get_row(row_idx)
+            await aprint(f'({row.id}, {row.username}, {row.email})')
         return ExecuteResult.EXECUTE_SUCCESS
-
-    async def pager_open(self, filename: str) -> Pager:
-        """open db file and build a pager
-
-        Args:
-            filename (str): _description_
-
-        Returns:
-            Pager: _description_
-        """
-        try:
-            fd = os.open(filename, os.O_RDWR|os.O_CREAT)
-            fd = open(filename, '+')
-            file_length = fd.seek(0, os.SEEK_END)  # seek to end to get length
-            pager = Pager(
-                file_descriptor=fd,
-                file_length=file_length,
-                pages=[None]*TABLE_MAX_PAGES,
-            )
-            return pager
-        except OSError as ex:
-            await aprint("Unable to open file")
-            exit(ExitStatus.EXIT_FAILURE)
 
     async def db_open(self, filename: str) -> Table:
         """_summary_
@@ -167,70 +146,55 @@ class PyDB:
         Returns:
             Table: _description_
         """
-        pager = await self.pager_open(filename)
-        return Table(num_rows=pager.file_length/ROW_SIZE, pager=pager)
+        try:
+            fd = open(filename, '+')
+            file_length = fd.seek(0, os.SEEK_END)
+            return Table(
+                file_descriptor=fd,
+                file_length=file_length,
+                num_rows=file_length/ROW_SIZE,
+                rows=[None] * MAX_ROWS
+            )
+        except OSError as ex:
+            await aprint("Unable to open file")
+            exit(ExitStatus.EXIT_FAILURE)
 
     async def db_close(self) -> None:
         """close d
         """
-        for page_idx in range(len(self.table.pager.pages)):
-            await self.pager_flush(page_idx)
+        for row_idx in range(len(self.table.num_rows)):
+            if self.table.rows[row_idx]:
+                await self.row_flush(row_idx)
 
-    async def get_page(self, page_num: int) -> None:
-        """if memory miss, then load page from db file into memory
-
-        Args:
-            page_num (int): _description_
-        """
-        if page_num > TABLE_MAX_PAGES:
-            await aprint(f'Tried to fetch page number out of bounds. {TABLE_MAX_PAGES}')
-            exit(ExitStatus.EXIT_FAILURE)
-
-        # page cache miss, load from file
-        if not self.table.pager.pages[page_num]:
-            num_pages = self.table.pager.file_length / PAGE_SIZE
-            # may have a partial page at the end of the file
-            if self.table.pager.file_length % PAGE_SIZE:
-                num_pages += 1
-
-            if page_num <= num_pages:
-                self.table.pager.file_descriptor.seek(
-                    page_num * PAGE_SIZE, os.SEEK_SET
-                )
-                data = self.table.pager.file_descriptor.read(PAGE_SIZE)
-                if not len(data):
-                    await aprint(f'Error reading file: {self.filename}')
-                    exit(ExitStatus.EXIT_FAILURE)
-                
-                # build data into rows within page
-                for offset in range(0, len(data), ROW_SIZE):
-                    row = self.deserialize_row(data[offset:ROW_SIZE])
-                    self.table.pager.pages[page_num].rows.append(row)
-        
-        return self.table.pager.pages[page_num]
-    
-    async def pager_flush(self, page_num: int, size: int) -> None:
-        """flush rows in page into file
+    async def get_row(self, row_idx: int) -> None:
+        """if memory miss, then load row from db file into memory
 
         Args:
-            page_num (int): _description_
-            size (int): _description_
+            row_idx (int): _description_
         """
-        if not self.table.pager.pages[page_num]:
-            await aprint(f'Tried to flush null page')
+        if row_idx > MAX_ROWS:
+            await aprint(f'Tried to fetch row number out of bounds. {MAX_ROWS}')
             exit(ExitStatus.EXIT_FAILURE)
         
-        # seek to corresponding offset in file for page num
-        offset = self.table.pager.file_descriptor.seek(page_num * PAGE_SIZE, os.SEEK_SET)
-        if not offset:
-            await aprint(f'Error seeking: ')
+        offset = row_idx * ROW_SIZE
+        self.table.file_descriptor.seek(offset, os.SEEK_SET)
+        data = self.table.file_descriptor.read(ROW_SIZE)
+        if not len(data):
+            await aprint(f'Error reading file: {self.filename}')
             exit(ExitStatus.EXIT_FAILURE)
-        
-        data = ''
-        for row in self.table.pager.pages[page_num].rows:
-            data += self.serialize_row(row)
-        
-        self.table.pager.file_descriptor.write(data)
+        self.table.rows[row_idx] = self.deserialize_row(data)
+        return self.table.rows[row_idx]
+
+    async def row_flush(self, row_idx: int) -> None:
+        """fluch a row into db file
+
+        Args:
+            row_idx (int): _description_
+        """
+        data = await self.serialize_row(self.table.rows[row_idx])
+        offset = row_idx * ROW_SIZE
+        self.table.file_descriptor.seek(offset, os.SEEK_SET)
+        self.table.file_descriptor.write(data)
 
     async def serialize_row(self, row: Row) -> str:
         """serialize row into str

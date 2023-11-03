@@ -17,14 +17,8 @@ class Statement(BaseModel):
     statement_type: StatementType
     row: Row = None  # select statement dont have row currently
 
-class Page(BaseModel):
-    rows: List[Row]
-
-class Pager(BaseModel):
+class Table(BaseModel):
     file_descriptor: PositiveInt
     file_length: PositiveInt
-    pages: List[Page]
-
-class Table(BaseModel):
     num_rows: NonNegativeInt
-    pager: Pager
+    rows: List[Row]
