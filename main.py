@@ -2,6 +2,7 @@
 from typing import Union, Literal
 import asyncio
 import os
+import sys
 
 from aioconsole import ainput, aprint
 import parse
@@ -17,7 +18,7 @@ class PyDB:
         table->row
         requirement doc: https://cstack.github.io/db_tutorial/parts/part3.html
         """
-        self.table = Table(num_rows=0, rows=[])
+        self.table = await self.db_open(sys.argv[1])
 
         while True:
             await self.prompt()
@@ -56,6 +57,7 @@ class PyDB:
             str: _description_
         """
         if data == '.exit':
+            await self.db_close()
             exit(ExitStatus.EXIT_SUCCESS)
         return MetaCommandResult.META_COMMAND_UNRECOGNIZED_COMMAND
 
@@ -115,7 +117,8 @@ class PyDB:
             Literal: _description_
         """
         self.table.num_rows += 1
-        self.table.rows.append(statement.row)
+        page_num = self.table.num_rows // ROWS_PER_PAGE
+        self.table.pager.pages[page_num].rows.append(statement.row)
         return ExecuteResult.EXECUTE_SUCCESS
     
     async def execute_select(self, statement) -> Literal:
@@ -127,8 +130,9 @@ class PyDB:
         Returns:
             Literal: _description_
         """
-        for row in self.table.rows:
-            await aprint(f'({row.id}, {row.username}, {row.email})')
+        for page in self.table.pager.pages:
+            for row in page.rows:
+                await aprint(f'({row.id}, {row.username}, {row.email})')
         return ExecuteResult.EXECUTE_SUCCESS
 
     async def pager_open(self, filename: str) -> Pager:
@@ -166,6 +170,12 @@ class PyDB:
         pager = await self.pager_open(filename)
         return Table(num_rows=pager.file_length/ROW_SIZE, pager=pager)
 
+    async def db_close(self) -> None:
+        """close d
+        """
+        for page_idx in range(len(self.table.pager.pages)):
+            await self.pager_flush(page_idx)
+
     async def get_page(self, page_num: int) -> None:
         """if memory miss, then load page from db file into memory
 
@@ -193,8 +203,9 @@ class PyDB:
                     exit(ExitStatus.EXIT_FAILURE)
                 
                 # build data into rows within page
-                for rd in range(0, len(data), ROW_SIZE):
-                    await aprint('ToDo')
+                for offset in range(0, len(data), ROW_SIZE):
+                    row = self.deserialize_row(data[offset:ROW_SIZE])
+                    self.table.pager.pages[page_num].rows.append(row)
         
         return self.table.pager.pages[page_num]
     
@@ -215,7 +226,11 @@ class PyDB:
             await aprint(f'Error seeking: ')
             exit(ExitStatus.EXIT_FAILURE)
         
-        self.table.pager.file_descriptor.write()
+        data = ''
+        for row in self.table.pager.pages[page_num].rows:
+            data += self.serialize_row(row)
+        
+        self.table.pager.file_descriptor.write(data)
 
     async def serialize_row(self, row: Row) -> str:
         """serialize row into str
@@ -226,7 +241,7 @@ class PyDB:
         Returns:
             str: _description_
         """
-        pass
+        return str(row)
 
     async def deserialize_row(self, data: str) -> Row:
         """deserialize data info Row obj
@@ -237,7 +252,8 @@ class PyDB:
         Returns:
             Row: _description_
         """
-        parse_res = parse.parse('{:.8}{:.32}{:.255}', data)
+        str_format = '{:.' + COLUMN_ID_SIZE + '}{:.' + COLUMN_USERNAME_SIZE + '{:.' + COLUMN_EMAIL_SIZE + '}'
+        parse_res = parse.parse(str_format, data)
         if not parse_res:
             await aprint(f'Failed Deserialize Row: {data}')
             exit(ExitStatus.EXIT_FAILURE)
