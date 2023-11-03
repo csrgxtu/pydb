@@ -1,5 +1,20 @@
 from enum import Enum
 
+# field length setting
+COLUMN_ID_SIZE = 8
+COLUMN_USERNAME_SIZE = 32
+COLUMN_EMAIL_SIZE = 255
+ROW_SIZE = COLUMN_ID_SIZE + COLUMN_USERNAME_SIZE + COLUMN_EMAIL_SIZE
+
+# used to when loading data from db file
+ID_OFFSET = 0
+USERNAME_OFFSET = ID_OFFSET + COLUMN_ID_SIZE
+EMAIL_OFFSET = USERNAME_OFFSET + COLUMN_USERNAME_SIZE
+
+# PAGE_SIZE = 4096
+TABLE_MAX_PAGES = 100
+
+
 class MetaCommandResult(Enum):
     META_COMMAND_SUCCESS = 0
     META_COMMAND_UNRECOGNIZED_COMMAND = 1
@@ -16,3 +31,7 @@ class StatementType(Enum):
 class ExecuteResult(Enum):
     EXECUTE_SUCCESS = 1
     EXECUTE_TABLE_FULL = 2
+
+class ExitStatus(Enum):
+    EXIT_FAILURE = 1
+    EXIT_SUCCESS = 0
