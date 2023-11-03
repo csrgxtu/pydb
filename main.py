@@ -1,41 +1,12 @@
 # A simple db repl support .exit command
-from enum import Enum
-from typing import Union, Literal, List
+from typing import Union, Literal
 import asyncio
+
 from aioconsole import ainput, aprint
 import parse
-from pydantic import BaseModel, PositiveInt, NonNegativeInt, constr, ValidationError
 
-class MetaCommandResult(Enum):
-    META_COMMAND_SUCCESS = 0
-    META_COMMAND_UNRECOGNIZED_COMMAND = 1
-
-class PrepareResult(Enum):
-    PREPARE_SUCCESS = 1
-    PREPARE_UNRECOGNIZED_STATEMENT = 2
-    PREPARE_SYNTAX_ERROR = 3
-
-class StatementType(Enum):
-    STATEMENT_INSERT = 1
-    STATEMENT_SELECT = 2
-
-class ExecuteResult(Enum):
-    EXECUTE_SUCCESS = 1
-    EXECUTE_TABLE_FULL = 2
-
-
-class Row(BaseModel):
-    id: PositiveInt
-    username: constr(min_length=1, max_length=32)
-    email: constr(min_length=1,max_length=255)
-
-class Statement(BaseModel):
-    statement_type: StatementType
-    row: Row = None  # select statement dont have row currently
-
-class Table(BaseModel):
-    num_rows: NonNegativeInt
-    rows: List[Row]
+from constants import *
+from models import *
 
 
 class PyDB:
