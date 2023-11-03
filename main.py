@@ -1,10 +1,10 @@
 # A simple db repl support .exit command
 from enum import Enum
-from typing import Union, Literal
+from typing import Union, Literal, List
 import asyncio
 from aioconsole import ainput, aprint
 import parse
-from pydantic import BaseModel, PositiveInt, constr
+from pydantic import BaseModel, PositiveInt, NonNegativeInt, constr, ValidationError
 
 class MetaCommandResult(Enum):
     META_COMMAND_SUCCESS = 0
@@ -24,26 +24,18 @@ class ExecuteResult(Enum):
     EXECUTE_TABLE_FULL = 2
 
 
-class Row:
-    """hard code table
-    """
-    id = None
-    username = None
-    email = None
-
-class RowV1(BaseModel):
+class Row(BaseModel):
     id: PositiveInt
     username: constr(min_length=1, max_length=32)
     email: constr(min_length=1,max_length=255)
 
-class Statement:
-    statement_type = StatementType.STATEMENT_INSERT  # default to insert
-    row = Row()
+class Statement(BaseModel):
+    statement_type: StatementType
+    row: Row = None  # select statement dont have row currently
 
-
-class Table:
-    num_rows = 0
-    rows = []
+class Table(BaseModel):
+    num_rows: NonNegativeInt
+    rows: List[Row]
 
 
 class PyDB:
@@ -53,7 +45,7 @@ class PyDB:
         table->row
         requirement doc: https://cstack.github.io/db_tutorial/parts/part3.html
         """
-        self.table = Table()
+        self.table = Table(num_rows=0, rows=[])
 
         while True:
             await self.prompt()
@@ -104,22 +96,31 @@ class PyDB:
         Returns:
             Union[str, Statement]: _description_
         """
-        upperData, statement = data.upper(), Statement()
-        if upperData.startswith('SELECT'):
-            statement.statement_type = StatementType.STATEMENT_SELECT
-        elif upperData.startswith('INSERT'):
-            parse_res = parse.parse('insert {:d} {} {}', data)
-            if not parse_res:
-                return PrepareResult.PREPARE_SYNTAX_ERROR, statement
-            
-            row = Row()
-            row.id, row.username, row.email = parse_res[0], parse_res[1], parse_res[2]
-            statement.row = row
-            statement.statement_type = StatementType.STATEMENT_INSERT
-        else:
-            return PrepareResult.PREPARE_UNRECOGNIZED_STATEMENT, statement
-        
-        return PrepareResult.PREPARE_SUCCESS, statement
+        upperData = data.upper()
+        try:
+            if upperData.startswith('SELECT'):
+                return PrepareResult.PREPARE_SUCCESS, Statement(
+                    statement_type=StatementType.STATEMENT_SELECT
+                )
+            elif upperData.startswith('INSERT'):
+                parse_res = parse.parse('insert {:d} {} {}', data)
+                if not parse_res:
+                    return PrepareResult.PREPARE_SYNTAX_ERROR, Statement(
+                        statement_type=StatementType.STATEMENT_INSERT
+                    )
+
+                return PrepareResult.PREPARE_SUCCESS, Statement(
+                    statement_type=StatementType.STATEMENT_INSERT,
+                    row=Row(id=parse_res[0], username=parse_res[1], email=parse_res[2])
+                )
+            else:
+                return PrepareResult.PREPARE_UNRECOGNIZED_STATEMENT, Statement(
+                    statement_type=StatementType.STATEMENT_INSERT
+                )
+        except ValidationError as ex:
+            return PrepareResult.PREPARE_SYNTAX_ERROR, Statement(
+                statement_type=StatementType.STATEMENT_INSERT
+            )
 
     async def execute_statement(self, statement: Statement) -> Literal:
         """execute the statement
