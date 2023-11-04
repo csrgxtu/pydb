@@ -1,5 +1,5 @@
-from typing import List
-from pydantic import BaseModel, PositiveInt, NonNegativeInt, constr, ValidationError
+from typing import List, TextIO
+from pydantic import BaseModel, PositiveInt, NonNegativeInt, constr
 from constants import *
 
 class Row(BaseModel):
@@ -17,8 +17,27 @@ class Statement(BaseModel):
     statement_type: StatementType
     row: Row = None  # select statement dont have row currently
 
-class Table(BaseModel):
-    file_descriptor: PositiveInt
-    file_length: PositiveInt
-    num_rows: NonNegativeInt
-    rows: List[Row]
+# class Table(BaseModel):
+#     file_descriptor: Optional[TextIOWrapper]
+#     file_length: NonNegativeInt
+#     num_rows: NonNegativeInt
+#     rows: List[Row] = []
+
+class Table:
+    def __init__(
+            self, file_descriptor: TextIO, file_length: int,
+            num_rows: int, rows: List[Row]
+    ) -> None:
+        """_summary_
+
+        Args:
+            file_descriptor (TextIO): _description_
+            file_length (int): _description_
+            num_rows (int): _description_
+            rows (List[Row]): _description_
+        """
+        self.file_descriptor = file_descriptor
+        self.file_length = file_length
+        self.num_rows = num_rows
+        self.rows = []
+

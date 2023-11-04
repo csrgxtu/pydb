@@ -18,6 +18,10 @@ class PyDB:
         table->row
         requirement doc: https://cstack.github.io/db_tutorial/parts/part3.html
         """
+        if len(sys.argv) != 2:
+            await aprint(f'Usage: python main.py yourdb.db')
+            exit(ExitStatus.EXIT_FAILURE)
+        
         self.table = await self.db_open(sys.argv[1])
 
         while True:
@@ -117,7 +121,7 @@ class PyDB:
             Literal: _description_
         """
         self.table.num_rows += 1
-        self.table.rows.append(statement.row)
+        self.table.rows[self.table.num_rows] = statement.row
         return ExecuteResult.EXECUTE_SUCCESS
     
     async def execute_select(self, statement) -> Literal:
@@ -147,12 +151,12 @@ class PyDB:
             Table: _description_
         """
         try:
-            fd = open(filename, '+')
+            fd = open(filename, 'r+')
             file_length = fd.seek(0, os.SEEK_END)
             return Table(
                 file_descriptor=fd,
                 file_length=file_length,
-                num_rows=file_length/ROW_SIZE,
+                num_rows=file_length//ROW_SIZE,
                 rows=[None] * MAX_ROWS
             )
         except OSError as ex:
@@ -162,7 +166,7 @@ class PyDB:
     async def db_close(self) -> None:
         """close d
         """
-        for row_idx in range(len(self.table.num_rows)):
+        for row_idx in range(self.table.num_rows):
             if self.table.rows[row_idx]:
                 await self.row_flush(row_idx)
 
