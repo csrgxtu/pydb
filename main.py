@@ -133,13 +133,12 @@ class PyDB:
         Returns:
             Literal: _description_
         """
-        await aprint(f'Debug: {self.table.num_rows} {len(self.table.rows)}')
         for row_idx in range(self.table.num_rows):
             if self.table.rows[row_idx]:
                 row = self.table.rows[row_idx]
             else:
                 row = await self.get_row(row_idx)
-            await aprint(f'({row.id}, {row.username}, {row.email})')
+            await aprint(f'({row.id}, {row.username.strip()}, {row.email.strip()})')
         return ExecuteResult.EXECUTE_SUCCESS
 
     async def db_open(self, filename: str) -> Table:
