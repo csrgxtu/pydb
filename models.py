@@ -39,5 +39,5 @@ class Table:
         self.file_descriptor = file_descriptor
         self.file_length = file_length
         self.num_rows = num_rows
-        self.rows = []
+        self.rows = rows
 

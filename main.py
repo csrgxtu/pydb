@@ -121,7 +121,7 @@ class PyDB:
             Literal: _description_
         """
         self.table.num_rows += 1
-        self.table.rows[self.table.num_rows] = statement.row
+        self.table.rows.append(statement.row)
         return ExecuteResult.EXECUTE_SUCCESS
     
     async def execute_select(self, statement) -> Literal:
@@ -133,6 +133,7 @@ class PyDB:
         Returns:
             Literal: _description_
         """
+        await aprint(f'Debug: {self.table.num_rows} {len(self.table.rows)}')
         for row_idx in range(self.table.num_rows):
             if self.table.rows[row_idx]:
                 row = self.table.rows[row_idx]
@@ -157,7 +158,7 @@ class PyDB:
                 file_descriptor=fd,
                 file_length=file_length,
                 num_rows=file_length//ROW_SIZE,
-                rows=[None] * MAX_ROWS
+                rows=[None] * (file_length//ROW_SIZE)
             )
         except OSError as ex:
             await aprint("Unable to open file")
@@ -170,11 +171,14 @@ class PyDB:
             if self.table.rows[row_idx]:
                 await self.row_flush(row_idx)
 
-    async def get_row(self, row_idx: int) -> None:
-        """if memory miss, then load row from db file into memory
+    async def get_row(self, row_idx: int) -> Row:
+        """get missing row from disk
 
         Args:
             row_idx (int): _description_
+
+        Returns:
+            Row: _description_
         """
         if row_idx > MAX_ROWS:
             await aprint(f'Tried to fetch row number out of bounds. {MAX_ROWS}')
@@ -186,7 +190,7 @@ class PyDB:
         if not len(data):
             await aprint(f'Error reading file: {self.filename}')
             exit(ExitStatus.EXIT_FAILURE)
-        self.table.rows[row_idx] = self.deserialize_row(data)
+        self.table.rows[row_idx] = await self.deserialize_row(data)
         return self.table.rows[row_idx]
 
     async def row_flush(self, row_idx: int) -> None:
@@ -220,8 +224,11 @@ class PyDB:
         Returns:
             Row: _description_
         """
-        str_format = '{:.' + COLUMN_ID_SIZE + '}{:.' + COLUMN_USERNAME_SIZE + '{:.' + COLUMN_EMAIL_SIZE + '}'
-        parse_res = parse.parse(str_format, data)
+        str_format = '{{:.{}}}{{:.{}}}{{:.{}}}'
+        parse_res = parse.parse(
+            str_format.format(COLUMN_ID_SIZE, COLUMN_USERNAME_SIZE, COLUMN_EMAIL_SIZE),
+            data
+        )
         if not parse_res:
             await aprint(f'Failed Deserialize Row: {data}')
             exit(ExitStatus.EXIT_FAILURE)
