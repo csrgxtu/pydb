@@ -169,6 +169,7 @@ class PyDB:
         for row_idx in range(self.table.num_rows):
             if self.table.rows[row_idx]:
                 await self.row_flush(row_idx)
+        self.table.file_descriptor.close()
 
     async def get_row(self, row_idx: int) -> Row:
         """get missing row from disk
