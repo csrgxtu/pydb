@@ -151,8 +151,8 @@ class PyDB:
             Table: _description_
         """
         try:
-            fd = open(filename, 'r+')
-            file_length = fd.seek(0, os.SEEK_END)
+            fd = open(filename, 'a+')
+            file_length = fd.seek(0, os.SEEK_SET)
             return Table(
                 file_descriptor=fd,
                 file_length=file_length,

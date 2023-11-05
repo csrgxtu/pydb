@@ -5,7 +5,7 @@ import pexpect
 @pytest.mark.asyncio
 async def test_pydb():
     # 1st, open the pydb
-    client = pexpect.spawn('python main.py')
+    client = pexpect.spawn('python main.py mydb.db')
     client.expect('db > ', timeout=3)
 
     # 2nd, insert 2 rows
