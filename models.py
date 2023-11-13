@@ -17,18 +17,13 @@ class Row(BaseModel):
     def __str__(self) -> str:
         return f'{self.id:{0}{'>'}{COLUMN_ID_SIZE}}{self.username:{''}{'<'}{COLUMN_USERNAME_SIZE}}{self.email:{''}{'<'}{COLUMN_EMAIL_SIZE}}'
 
-    async def serialize_row(self, page_idx: int, row_offset: int) -> None:
+    async def serialize_row(self) -> None:
         """serialize row into corresponding page
-
-        Args:
-            page_idx (int): _description_
-            row_offset (int): _description_
 
         Returns:
             _type_: _description_
         """
         # each row must be stred into ROW_SIZE
-        self.table.pager.pages[page_idx].page[row_offset:row_offset+ROW_SIZE] = str(self)
         return str(self)
 
     @classmethod
@@ -256,7 +251,7 @@ class Cursor:
         return Cursor(
             table=table,
             row_num=0,
-            end_of_table=False
+            end_of_table=True if table.num_rows == 0 else False
         )
     
     @classmethod

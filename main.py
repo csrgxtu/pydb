@@ -125,7 +125,8 @@ class PyDB:
         # serialize the row into corresponding page
         cursor = await Cursor.table_end(self.table)
         page_idx, row_offset = await cursor.cursor_value()
-        await statement.row.serialize_row(page_idx, row_offset)
+        serialized = await statement.row.serialize_row()
+        self.table.pager.pages[page_idx].page[row_offset:row_offset+ROW_SIZE] = serialized
         self.table.num_rows += 1
 
         return ExecuteResult.EXECUTE_SUCCESS
