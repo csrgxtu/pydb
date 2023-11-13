@@ -124,7 +124,8 @@ class PyDB:
             return ExecuteResult.EXECUTE_TABLE_FULL
         
         # serialize the row into corresponding page
-        await self.serialize_row(statement.row, await self.row_slot(self.table.num_rows))
+        page_idx, row_offset = await self.row_slot(self.table.num_rows)
+        await self.serialize_row(statement.row, page_idx, row_offset)
         self.table.num_rows += 1
 
         return ExecuteResult.EXECUTE_SUCCESS
@@ -140,7 +141,7 @@ class PyDB:
         """
         for row_idx in range(self.table.num_rows):
             page_idx, row_offset = await self.row_slot(row_idx)
-            row = await self.deserialize_row(self.table.pager.pages[page_idx][row_offset:ROW_SIZE])
+            row = await self.deserialize_row(''.join(self.table.pager.pages[page_idx].page[row_offset:row_offset+ROW_SIZE]))
             await aprint(f'({row.id}, {row.username.strip()}, {row.email.strip()})')
         return ExecuteResult.EXECUTE_SUCCESS
 
@@ -155,11 +156,20 @@ class PyDB:
             Pager: _description_
         """
         try:
-            fd = open(filename, 'a+')
+            fd = open(filename, 'r+')
             file_length = fd.seek(0, os.SEEK_END)
             return Pager(
                 file_descriptor=fd,
                 file_length=file_length,
+                pages=[None] * TABLE_MAX_PAGES
+            )
+        except FileNotFoundError as ex:
+            fd = open(filename, 'w')
+            fd.close()
+            fd = open(filename, 'r+')
+            return Pager(
+                file_descriptor=fd,
+                file_length=0,
                 pages=[None] * TABLE_MAX_PAGES
             )
         except OSError as ex:
@@ -176,7 +186,7 @@ class PyDB:
             Table: _description_
         """
         pager = await self.pager_open(filename)
-        num_rows = pager.file_length / ROW_SIZE
+        num_rows = pager.file_length // ROW_SIZE
 
         return Table(
             pager=pager,
@@ -186,7 +196,7 @@ class PyDB:
     async def db_close(self) -> None:
         """close d
         """
-        num_full_pages = self.table.num_rows // PAGE_SIZE
+        num_full_pages = self.table.num_rows // ROWS_PER_PAGE
 
         # persist full page into db file
         for pdx in range(num_full_pages):
@@ -226,7 +236,7 @@ class PyDB:
             _type_: _description_
         """
         # each row must be stred into ROW_SIZE
-        self.table.pager.pages[page_idx][row_offset:ROW_SIZE] = str(row)
+        self.table.pager.pages[page_idx].page[row_offset:row_offset+ROW_SIZE] = str(row)
         return str(row)
 
     async def deserialize_row(self, data: str) -> Row:
@@ -265,7 +275,7 @@ class PyDB:
         page_num = row_num // ROWS_PER_PAGE
         await self.get_page(page_num)
         offset = (row_num % ROWS_PER_PAGE) * ROW_SIZE
-        return page_num-1, offset-1
+        return page_num, offset
     
     async def get_page(self, page_num: int) -> Page:
         """get page from current pager, if miss load it from file
@@ -281,24 +291,24 @@ class PyDB:
             exit(ExitStatus.EXIT_FAILURE)
 
         # page not in mem, load it
-        if not self.table.pager[page_num]:
+        if not self.table.pager.pages[page_num]:
             num_pages = self.table.pager.file_length // PAGE_SIZE
 
             # might save a partial page at the end of file
             if self.table.pager.file_length % PAGE_SIZE:
                 num_pages += 1
             
-            if page_num <= num_pages:
+            if num_pages and page_num <= num_pages:
                 self.table.pager.file_descriptor.seek(page_num * PAGE_SIZE, os.SEEK_SET)
                 data = self.table.pager.file_descriptor.read(PAGE_SIZE)
                 if not len(data):
                     await aprint(f'Error reading file: {len(data)}')
                     exit(ExitStatus.EXIT_FAILURE)
-                self.table.pager[page_num] = Page(List(data))
+                self.table.pager.pages[page_num] = Page(list(data))
             else:  # its a new page
-                self.table.pager[page_num] = Page(page=[])
+                self.table.pager.pages[page_num] = Page()
 
-        return self.table.pager[page_num]
+        return self.table.pager.pages[page_num]
     
     async def pager_flush(self, page_idx: int, size: int) -> None:
         """flush data on page-idx into file
@@ -316,7 +326,7 @@ class PyDB:
             await aprint(f'Error seeking: {page_idx * PAGE_SIZE}')
             exit(ExitStatus.EXIT_FAILURE)
         
-        written = self.table.pager.file_descriptor.write(self.table.pager.pages[page_idx])
+        written = self.table.pager.file_descriptor.write(''.join(self.table.pager.pages[page_idx].page))
         if written == -1:
             await aprint(f'Error writing: {page_idx}')
             exit(ExitStatus.EXIT_FAILURE)
